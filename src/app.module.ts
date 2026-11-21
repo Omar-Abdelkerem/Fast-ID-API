@@ -25,7 +25,10 @@ import { AuthModule } from './modules/auth/auth.module';
 import { EmailModule } from './modules/email/email.module';
 import { HealthModule } from './modules/health/health.module';
 import { NotificationsRegistryModule } from './modules/notifications/notifications-registry.module';
+import { ReferenceModule } from './modules/reference/reference.module';
 import { SeedModule } from './modules/seed/seed.module';
+import { ServicesModule } from './modules/services/services.module';
+import { SettingsModule } from './modules/settings/settings.module';
 
 @Module({
   imports: [
@@ -107,6 +110,9 @@ import { SeedModule } from './modules/seed/seed.module';
     SeedModule,
     HealthModule,
     AuthModule,
+    ReferenceModule,
+    SettingsModule,
+    ServicesModule,
   ],
   providers: [
     // Guard execution order matches Design §5:
