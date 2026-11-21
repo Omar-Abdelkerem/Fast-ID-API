@@ -39,6 +39,8 @@ jobs:
       STORAGE_DRIVER: local
       STORAGE_LOCAL_PATH: ./storage
       PAYMENT_MODE: mock
+      SEED_ADMIN_EMAIL: admin@example.com
+      SEED_ADMIN_PASSWORD: InitialSeedPassword2026!
 
     steps:
       - uses: actions/checkout@v4
