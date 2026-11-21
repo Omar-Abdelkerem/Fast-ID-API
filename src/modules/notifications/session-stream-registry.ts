@@ -1,25 +1,30 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { notifications } from '@prisma/client';
 
-export interface SseDisconnectHandler {
+export interface SseStreamHandler {
   disconnectUser(userId: string): void;
+  publishNotifications(items: notifications[]): void;
   closeAll(): void;
 }
 
 /**
- * Leaf registry allowing auth/users modules to disconnect a user's active SSE streams
- * on logout, password change/reset, and account deactivation (Design D-08, §5.3, §9).
- * M5's NotificationsBroadcaster registers itself here on boot.
+ * Leaf registry allowing auth/users/applications/deliveries to publish live notifications
+ * and disconnect active SSE streams without circular module dependencies (Design D-08, §4.1).
  */
 @Injectable()
 export class SessionStreamRegistry implements OnModuleDestroy {
-  private handler: SseDisconnectHandler | null = null;
+  private handler: SseStreamHandler | null = null;
 
-  registerHandler(handler: SseDisconnectHandler): void {
+  registerHandler(handler: SseStreamHandler): void {
     this.handler = handler;
   }
 
   disconnectUser(userId: string): void {
     this.handler?.disconnectUser(userId);
+  }
+
+  publishNotifications(items: notifications[]): void {
+    this.handler?.publishNotifications(items);
   }
 
   onModuleDestroy(): void {

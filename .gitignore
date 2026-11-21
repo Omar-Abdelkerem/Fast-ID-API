@@ -10,9 +10,9 @@ coverage/
 .env.local
 .env.*.local
 
-# Local storage uploads
-storage/
-uploads/
+# Local storage uploads (root directory only)
+/storage/
+/uploads/
 
 # Logs & OS artifacts
 *.log

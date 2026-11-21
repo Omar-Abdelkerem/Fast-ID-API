@@ -61,6 +61,7 @@ describe('Auth module (e2e)', () => {
 
     streamRegistry.registerHandler({
       disconnectUser: (userId) => disconnectedUsers.push(userId),
+      publishNotifications: () => undefined,
       closeAll: () => undefined,
     });
   });
