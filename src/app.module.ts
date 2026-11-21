@@ -21,6 +21,8 @@ import { BoundedThrottlerStorage } from './common/rate-limit/bounded-throttler-s
 import { validateEnv } from './config/env.schema';
 import { DatabaseModule } from './database/database.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { ApplicationsModule } from './modules/applications/applications.module';
+import { AttachmentsModule } from './modules/attachments/attachments.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { EmailModule } from './modules/email/email.module';
 import { HealthModule } from './modules/health/health.module';
@@ -29,6 +31,7 @@ import { ReferenceModule } from './modules/reference/reference.module';
 import { SeedModule } from './modules/seed/seed.module';
 import { ServicesModule } from './modules/services/services.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { StorageModule } from './modules/storage/storage.module';
 
 @Module({
   imports: [
@@ -104,6 +107,7 @@ import { SettingsModule } from './modules/settings/settings.module';
     }),
     ScheduleModule.forRoot(),
     DatabaseModule,
+    StorageModule,
     AuditModule,
     EmailModule,
     NotificationsRegistryModule,
@@ -113,6 +117,8 @@ import { SettingsModule } from './modules/settings/settings.module';
     ReferenceModule,
     SettingsModule,
     ServicesModule,
+    ApplicationsModule,
+    AttachmentsModule,
   ],
   providers: [
     // Guard execution order matches Design §5:

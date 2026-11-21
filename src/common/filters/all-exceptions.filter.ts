@@ -94,7 +94,15 @@ function mapPrismaError(exception: unknown): AppException | null {
   return null;
 }
 
-function mapHttpException(exception: HttpException): AppException | null {
+function isAttachmentUploadRequest(req: RequestWithId | undefined): boolean {
+  const path = (req?.originalUrl ?? '').split('?')[0];
+  return /^\/api\/v1\/applications\/[^/]+\/attachments\/?$/.test(path);
+}
+
+function mapHttpException(
+  exception: HttpException,
+  req: RequestWithId | undefined,
+): AppException | null {
   const status = exception.getStatus();
   switch (status) {
     case HttpStatus.BAD_REQUEST:
@@ -104,6 +112,9 @@ function mapHttpException(exception: HttpException): AppException | null {
     case HttpStatus.FORBIDDEN:
       return new AppException('FORBIDDEN', 'You do not have permission to perform this action.');
     case HttpStatus.PAYLOAD_TOO_LARGE:
+      if (isAttachmentUploadRequest(req)) {
+        return new AppException('FILE_TOO_LARGE', 'Uploaded file exceeds the maximum size.');
+      }
       return new AppException('PAYLOAD_TOO_LARGE', 'Request payload exceeds the 100 KB limit.');
     case HttpStatus.UNSUPPORTED_MEDIA_TYPE:
       return new AppException('UNSUPPORTED_MEDIA_TYPE', 'Unsupported Content-Type.');
@@ -146,7 +157,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     if (exception instanceof HttpException) {
-      const httpMapped = mapHttpException(exception);
+      const httpMapped = mapHttpException(exception, req);
       if (httpMapped) {
         res.status(httpMapped.getStatus()).json(httpMapped.toEnvelope());
         return;
