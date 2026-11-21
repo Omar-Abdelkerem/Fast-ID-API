@@ -22,8 +22,11 @@ import { validateEnv } from './config/env.schema';
 import { DatabaseModule } from './database/database.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { ApplicationsModule } from './modules/applications/applications.module';
+import { WorkflowModule } from './modules/applications/workflow.module';
 import { AttachmentsModule } from './modules/attachments/attachments.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { CredentialsModule } from './modules/credentials/credentials.module';
+import { DeliveriesModule } from './modules/deliveries/deliveries.module';
 import { EmailModule } from './modules/email/email.module';
 import { HealthModule } from './modules/health/health.module';
 import { NotificationsRegistryModule } from './modules/notifications/notifications-registry.module';
@@ -111,12 +114,15 @@ import { StorageModule } from './modules/storage/storage.module';
     AuditModule,
     EmailModule,
     NotificationsRegistryModule,
+    WorkflowModule,
     SeedModule,
     HealthModule,
     AuthModule,
     ReferenceModule,
     SettingsModule,
     ServicesModule,
+    CredentialsModule,
+    DeliveriesModule,
     ApplicationsModule,
     AttachmentsModule,
   ],
