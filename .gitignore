@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+coverage/
+
+# Environment files (never commit real secrets)
+.env
+.env.local
+.env.*.local
+
+# Local storage uploads
+storage/
+uploads/
+
+# Logs & OS artifacts
+*.log
+.DS_Store
+Thumbs.db

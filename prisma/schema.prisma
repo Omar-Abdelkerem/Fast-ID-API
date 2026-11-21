@@ -1,0 +1,435 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model application_status_history {
+  id             BigInt             @id @default(autoincrement())
+  application_id String             @db.Uuid
+  status         application_status
+  created_at     DateTime           @default(now()) @db.Timestamptz(6)
+  by_user_id     String?            @db.Uuid
+  citizen_note   String?
+  staff_note     String?
+  applications   applications       @relation(fields: [application_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users          users?             @relation(fields: [by_user_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([application_id, created_at, id], map: "ash_application_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model applications {
+  id                                   String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  application_number                   String                       @unique(map: "applications_number_unique") @default(dbgenerated("((('APP-'::text || to_char((now() AT TIME ZONE 'Africa/Cairo'::text), 'YYYY'::text)) || '-'::text) || lpad((nextval('application_number_seq'::regclass))::text, 6, '0'::text))")) @db.VarChar(20)
+  citizen_id                           String                       @db.Uuid
+  service_id                           String                       @db.VarChar(60)
+  service_version                      Int?
+  status                               application_status           @default(DRAFT)
+  data                                 Json                         @default("{}")
+  delivery_address                     Json?
+  payment_status                       payment_status
+  payment_amount                       Int                          @default(0)
+  paid_at                              DateTime?                    @db.Timestamptz(6)
+  payment_reference                    String?                      @db.VarChar(40)
+  submitted_at                         DateTime?                    @db.Timestamptz(6)
+  due_at                               DateTime?                    @db.Timestamptz(6)
+  decided_at                           DateTime?                    @db.Timestamptz(6)
+  decided_by                           String?                      @db.Uuid
+  decision_outcome                     decision_outcome?
+  decision_reason_code                 reject_reason_code?
+  decision_reason                      String?
+  created_at                           DateTime                     @default(now()) @db.Timestamptz(6)
+  updated_at                           DateTime                     @default(now()) @db.Timestamptz(6)
+  application_status_history           application_status_history[]
+  users_applications_citizen_idTousers users                        @relation("applications_citizen_idTousers", fields: [citizen_id], references: [id], onUpdate: NoAction)
+  users_applications_decided_byTousers users?                       @relation("applications_decided_byTousers", fields: [decided_by], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  services                             services                     @relation(fields: [service_id], references: [id], onUpdate: NoAction)
+  service_versions                     service_versions?            @relation(fields: [service_id, service_version], references: [service_id, version], onUpdate: NoAction, map: "applications_service_version_fk")
+  attachments                          attachments[]
+  credentials                          credentials?
+  deliveries                           deliveries?
+
+  @@index([citizen_id, status, created_at(sort: Desc)], map: "applications_citizen_status_idx")
+  @@index([application_number], map: "applications_number_prefix_idx")
+  @@index([service_id], map: "applications_service_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model attachments {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  application_id  String       @db.Uuid
+  requirement_key String       @db.VarChar(40)
+  original_name   String       @db.VarChar(255)
+  mime_type       String       @db.VarChar(100)
+  size_bytes      Int
+  storage_key     String       @unique(map: "attachments_storage_key_unique")
+  uploaded_at     DateTime     @default(now()) @db.Timestamptz(6)
+  applications    applications @relation(fields: [application_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([application_id, requirement_key], map: "attachments_one_per_requirement")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model audit_logs {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actor_id    String?      @db.Uuid
+  action      audit_action
+  entity_type audit_entity
+  entity_id   String       @db.VarChar(64)
+  metadata    Json         @default("{}")
+  created_at  DateTime     @default(now()) @db.Timestamptz(6)
+  users       users?       @relation(fields: [actor_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([action, created_at(sort: Desc)], map: "audit_action_idx")
+  @@index([actor_id, created_at(sort: Desc)], map: "audit_actor_idx")
+  @@index([created_at(sort: Desc)], map: "audit_created_idx")
+  @@index([entity_type, entity_id, created_at(sort: Desc)], map: "audit_entity_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model credentials {
+  id                                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  application_id                      String            @unique(map: "credentials_application_unique") @db.Uuid
+  holder_id                           String            @db.Uuid
+  service_id                          String            @db.VarChar(60)
+  holder_name                         String            @db.VarChar(100)
+  number                              String            @unique(map: "credentials_number_unique") @db.VarChar(14)
+  qr_token                            String            @unique(map: "credentials_qr_token_unique") @db.VarChar(64)
+  status                              credential_status @default(ACTIVE)
+  issued_at                           DateTime          @default(now()) @db.Timestamptz(6)
+  expires_at                          DateTime?         @db.Timestamptz(6)
+  revoked_at                          DateTime?         @db.Timestamptz(6)
+  revoked_by                          String?           @db.Uuid
+  revoked_reason                      String?
+  applications                        applications      @relation(fields: [application_id], references: [id], onUpdate: NoAction)
+  users_credentials_holder_idTousers  users             @relation("credentials_holder_idTousers", fields: [holder_id], references: [id], onUpdate: NoAction)
+  users_credentials_revoked_byTousers users?            @relation("credentials_revoked_byTousers", fields: [revoked_by], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  services                            services          @relation(fields: [service_id], references: [id], onUpdate: NoAction)
+
+  @@index([holder_id, issued_at(sort: Desc)], map: "credentials_holder_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model deliveries {
+  id                  String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  application_id      String                 @unique(map: "deliveries_application_unique") @db.Uuid
+  agent_id            String?                @db.Uuid
+  status              delivery_status        @default(PENDING_ASSIGNMENT)
+  attempts            Int                    @default(0)
+  delivery_code       String?                @db.Char(6)
+  code_failed_tries   Int                    @default(0) @db.SmallInt
+  assigned_at         DateTime?              @db.Timestamptz(6)
+  out_for_delivery_at DateTime?              @db.Timestamptz(6)
+  delivered_at        DateTime?              @db.Timestamptz(6)
+  last_failure_code   delivery_failure_code?
+  last_failure_reason String?
+  last_failure_at     DateTime?              @db.Timestamptz(6)
+  created_at          DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime               @default(now()) @db.Timestamptz(6)
+  users               users?                 @relation(fields: [agent_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  applications        applications           @relation(fields: [application_id], references: [id], onUpdate: NoAction)
+
+  @@index([agent_id, status, assigned_at], map: "deliveries_agent_status_idx")
+  @@index([status, created_at(sort: Desc)], map: "deliveries_status_created_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model email_outbox {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  to_email        String         @db.VarChar(254)
+  to_user_id      String?        @db.Uuid
+  template        email_template
+  language        language_code
+  payload         Json           @default("{}")
+  status          outbox_status  @default(PENDING)
+  attempts        Int            @default(0)
+  next_attempt_at DateTime       @default(now()) @db.Timestamptz(6)
+  locked_until    DateTime?      @db.Timestamptz(6)
+  last_error      String?
+  created_at      DateTime       @default(now()) @db.Timestamptz(6)
+  sent_at         DateTime?      @db.Timestamptz(6)
+  users           users?         @relation(fields: [to_user_id], references: [id], onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model notifications {
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String              @db.Uuid
+  type        notification_type
+  title       Json
+  body        Json
+  entity_type notification_entity
+  entity_id   String              @db.Uuid
+  is_read     Boolean             @default(false)
+  read_at     DateTime?           @db.Timestamptz(6)
+  created_at  DateTime            @default(now()) @db.Timestamptz(6)
+  users       users               @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id, is_read, created_at(sort: Desc)], map: "notifications_user_read_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model password_reset_tokens {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String    @db.Uuid
+  token_hash String    @unique(map: "prt_token_hash_unique") @db.Char(64)
+  expires_at DateTime  @db.Timestamptz(6)
+  used_at    DateTime? @db.Timestamptz(6)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id], map: "prt_user_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model service_versions {
+  service_id                                               String         @db.VarChar(60)
+  version                                                  Int
+  definition                                               Json
+  published_at                                             DateTime       @default(now()) @db.Timestamptz(6)
+  applications                                             applications[]
+  services_service_versions_service_idToservices           services       @relation("service_versions_service_idToservices", fields: [service_id], references: [id], onUpdate: NoAction)
+  services_services_id_published_versionToservice_versions services[]     @relation("services_id_published_versionToservice_versions")
+
+  @@id([service_id, version])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model services {
+  id                                                               String               @id @db.VarChar(60)
+  availability                                                     service_availability @default(DRAFT)
+  draft                                                            Json
+  published_version                                                Int?
+  published_at                                                     DateTime?            @db.Timestamptz(6)
+  created_at                                                       DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at                                                       DateTime             @default(now()) @db.Timestamptz(6)
+  applications                                                     applications[]
+  credentials                                                      credentials[]
+  service_versions_service_versions_service_idToservices           service_versions[]   @relation("service_versions_service_idToservices")
+  service_versions_services_id_published_versionToservice_versions service_versions?    @relation("services_id_published_versionToservice_versions", fields: [id, published_version], references: [service_id, version], onDelete: NoAction, onUpdate: NoAction, map: "services_published_version_fk")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model settings {
+  id            String   @id @default("singleton")
+  support_email String?  @db.VarChar(254)
+  support_phone String?  @db.VarChar(11)
+  announcement  Json?
+  updated_by    String?  @db.Uuid
+  updated_at    DateTime @default(now()) @db.Timestamptz(6)
+  users         users?   @relation(fields: [updated_by], references: [id], onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model users {
+  id                                          String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  role                                        user_role
+  full_name                                   String                       @db.VarChar(100)
+  email                                       String                       @unique(map: "users_email_unique") @db.VarChar(254)
+  phone                                       String                       @db.VarChar(11)
+  password_hash                               String
+  national_id                                 String?                      @unique(map: "users_national_id_unique") @db.Char(14)
+  birth_date                                  DateTime?                    @db.Date
+  gender                                      gender?
+  governorate                                 governorate?
+  preferred_language                          language_code                @default(ar)
+  is_active                                   Boolean                      @default(true)
+  must_change_password                        Boolean                      @default(false)
+  token_version                               Int                          @default(0)
+  created_at                                  DateTime                     @default(now()) @db.Timestamptz(6)
+  updated_at                                  DateTime                     @default(now()) @db.Timestamptz(6)
+  application_status_history                  application_status_history[]
+  applications_applications_citizen_idTousers applications[]               @relation("applications_citizen_idTousers")
+  applications_applications_decided_byTousers applications[]               @relation("applications_decided_byTousers")
+  audit_logs                                  audit_logs[]
+  credentials_credentials_holder_idTousers    credentials[]                @relation("credentials_holder_idTousers")
+  credentials_credentials_revoked_byTousers   credentials[]                @relation("credentials_revoked_byTousers")
+  deliveries                                  deliveries[]
+  email_outbox                                email_outbox[]
+  notifications                               notifications[]
+  password_reset_tokens                       password_reset_tokens[]
+  settings                                    settings[]
+
+  @@index([email(ops: raw("gin_trgm_ops"))], map: "users_email_trgm", type: Gin)
+  @@index([full_name(ops: raw("gin_trgm_ops"))], map: "users_full_name_trgm", type: Gin)
+  @@index([role, is_active], map: "users_role_active_idx")
+}
+
+enum application_status {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+enum audit_action {
+  APPLICATION_SUBMITTED
+  APPLICATION_REVIEW_STARTED
+  APPLICATION_APPROVED
+  APPLICATION_REJECTED
+  APPLICATION_CANCELLED
+  CREDENTIAL_ISSUED
+  CREDENTIAL_REVOKED
+  DELIVERY_CREATED
+  DELIVERY_ASSIGNED
+  DELIVERY_OUT_FOR_DELIVERY
+  DELIVERY_FAILED
+  DELIVERY_COMPLETED
+  SERVICE_CREATED
+  SERVICE_UPDATED
+  SERVICE_PUBLISHED
+  SERVICE_UNPUBLISHED
+  SERVICE_DELETED
+  STAFF_CREATED
+  STAFF_UPDATED
+  CITIZEN_DEACTIVATED
+  CITIZEN_REACTIVATED
+  PAYMENT_MARKED_PAID_MOCK
+  PASSWORD_RESET_COMPLETED
+  SETTINGS_UPDATED
+}
+
+enum audit_entity {
+  APPLICATION
+  SERVICE
+  CREDENTIAL
+  DELIVERY
+  USER
+  SETTINGS
+}
+
+enum credential_status {
+  ACTIVE
+  REVOKED
+}
+
+enum decision_outcome {
+  APPROVED
+  REJECTED
+}
+
+enum delivery_failure_code {
+  CITIZEN_UNAVAILABLE
+  WRONG_ADDRESS
+  CITIZEN_REFUSED
+  OTHER
+}
+
+enum delivery_status {
+  PENDING_ASSIGNMENT
+  ASSIGNED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED_ATTEMPT
+}
+
+enum email_template {
+  APPLICATION_SUBMITTED
+  APPLICATION_APPROVED
+  APPLICATION_REJECTED
+  CREDENTIAL_REVOKED
+  DELIVERY_OUT_FOR_DELIVERY
+  DELIVERY_FAILED_ATTEMPT
+  DELIVERY_COMPLETED
+  PASSWORD_RESET
+  PASSWORD_CHANGED
+}
+
+enum gender {
+  MALE
+  FEMALE
+}
+
+enum governorate {
+  CAIRO
+  GIZA
+  ALEXANDRIA
+  QALYUBIA
+  PORT_SAID
+  SUEZ
+  DAKAHLIA
+  SHARQIA
+  GHARBIA
+  MONUFIA
+  BEHEIRA
+  KAFR_EL_SHEIKH
+  DAMIETTA
+  ISMAILIA
+  FAIYUM
+  BENI_SUEF
+  MINYA
+  ASSIUT
+  SOHAG
+  QENA
+  LUXOR
+  ASWAN
+  RED_SEA
+  NEW_VALLEY
+  MATROUH
+  NORTH_SINAI
+  SOUTH_SINAI
+}
+
+enum language_code {
+  ar
+  en
+}
+
+enum notification_entity {
+  APPLICATION
+  DELIVERY
+}
+
+enum notification_type {
+  APPLICATION_SUBMITTED
+  APPLICATION_CANCELLED
+  APPLICATION_UNDER_REVIEW
+  APPLICATION_APPROVED
+  APPLICATION_REJECTED
+  CREDENTIAL_REVOKED
+  DELIVERY_ASSIGNED
+  DELIVERY_OUT_FOR_DELIVERY
+  DELIVERY_FAILED_ATTEMPT
+  DELIVERY_COMPLETED
+}
+
+enum outbox_status {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum payment_status {
+  NOT_REQUIRED
+  UNPAID
+  PAID
+}
+
+enum reject_reason_code {
+  INCOMPLETE_DOCUMENTS
+  UNCLEAR_DOCUMENTS
+  INVALID_DATA
+  DUPLICATE_REQUEST
+  OTHER
+}
+
+enum service_availability {
+  DRAFT
+  PUBLISHED
+  UNPUBLISHED
+}
+
+enum user_role {
+  CITIZEN
+  ADMIN
+  AGENT
+}

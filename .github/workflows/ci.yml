@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: fastid_ci
+          POSTGRES_PASSWORD: fastid_ci_password
+          POSTGRES_DB: fastid_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      PORT: 3001
+      LOG_LEVEL: silent
+      TRUST_PROXY: "false"
+      DATABASE_URL: postgresql://fastid_ci:fastid_ci_password@127.0.0.1:5432/fastid_ci?schema=public
+      JWT_SECRET: ci-only-test-secret-that-is-longer-than-32-bytes
+      COOKIE_SAMESITE: lax
+      CORS_ORIGINS: http://127.0.0.1:5173
+      FRONTEND_BASE_URL: http://127.0.0.1:5173
+      EMAIL_DRIVER: log
+      STORAGE_DRIVER: local
+      STORAGE_LOCAL_PATH: ./storage
+      PAYMENT_MODE: mock
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Apply migrations to empty database
+        run: npx prisma migrate deploy
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test
+
+      - name: E2E tests
+        run: npm run test:e2e
+
+      - name: Dependency security audit (report only)
+        run: npm audit --omit=dev || true

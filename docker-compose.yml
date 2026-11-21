@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fastid}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fastid_local_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-fastid}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - fastid_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fastid} -d ${POSTGRES_DB:-fastid}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  fastid_pgdata:
