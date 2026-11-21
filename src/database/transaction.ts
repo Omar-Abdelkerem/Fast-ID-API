@@ -48,5 +48,5 @@ export async function lockUser(tx: PrismaTx, userId: string): Promise<boolean> {
 }
 
 export async function acquireAdvisoryXactLock(tx: PrismaTx, lockKey: string): Promise<void> {
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
 }
