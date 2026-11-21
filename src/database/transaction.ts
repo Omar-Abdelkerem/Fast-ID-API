@@ -47,6 +47,13 @@ export async function lockUser(tx: PrismaTx, userId: string): Promise<boolean> {
   return rows.length > 0;
 }
 
+export async function lockService(tx: PrismaTx, serviceId: string): Promise<boolean> {
+  const rows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM services WHERE id = ${serviceId} FOR UPDATE
+  `;
+  return rows.length > 0;
+}
+
 export async function acquireAdvisoryXactLock(tx: PrismaTx, lockKey: string): Promise<void> {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
 }
