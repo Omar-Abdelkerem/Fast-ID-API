@@ -1,14 +1,28 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
+import { Response } from 'express';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { SkipEnvelope } from '../../common/decorators/skip-envelope.decorator';
 import { EmptyBodyDto } from '../../common/dto/empty-body.dto';
 import { PaginatedResult } from '../../common/dto/pagination.dto';
+import { UserRateLimit } from '../../common/guards/user-rate-limit.guard';
 import {
   AdminApplicationListItemResponse,
   AdminApplicationResponse,
 } from './admin-application-response.mapper';
 import { AdminApplicationsService } from './admin-applications.service';
 import { ApproveApplicationDto } from './dto/approve-application.dto';
+import { ExportAdminApplicationsQueryDto } from './dto/export-admin-applications-query.dto';
 import { ListAdminApplicationsQueryDto } from './dto/list-admin-applications-query.dto';
 import { RejectApplicationDto } from './dto/reject-application.dto';
 
@@ -22,6 +36,16 @@ export class AdminApplicationsController {
     @Query() query: ListAdminApplicationsQueryDto,
   ): Promise<PaginatedResult<AdminApplicationListItemResponse>> {
     return this.adminApplicationsService.list(query);
+  }
+
+  @SkipEnvelope()
+  @UserRateLimit({ name: 'admin-applications-export', limit: 5, windowMs: 60_000 })
+  @Get('export')
+  async exportCsv(
+    @Query() query: ExportAdminApplicationsQueryDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    await this.adminApplicationsService.exportCsv(query, res);
   }
 
   @Get(':id')

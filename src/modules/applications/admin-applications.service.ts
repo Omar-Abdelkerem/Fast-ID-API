@@ -1,8 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { application_status, governorate, notifications, Prisma } from '@prisma/client';
+import { Response } from 'express';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { createPaginatedResult, PaginatedResult } from '../../common/dto/pagination.dto';
 import { AppException } from '../../common/errors/app-exception';
+import {
+  ADMIN_EXPORT_CSV_HEADERS,
+  formatApplicationStatusLabel,
+  formatCairoCompactDate,
+  formatCairoDateTime,
+  formatCsvRow,
+  formatDeliveryStatusLabel,
+  formatMoneyEgp,
+  formatPaymentStatusLabel,
+  UTF8_BOM,
+} from '../../common/utils/csv';
+import { maskNationalId } from '../../common/utils/mask';
 import { isUuid } from '../../common/utils/uuid';
 import { PrismaService } from '../../database/prisma.service';
 import { lockApplication, PrismaTx, withTx } from '../../database/transaction';
@@ -22,11 +35,15 @@ import {
 } from './admin-application-response.mapper';
 import { ApplicationWorkflowService } from './application-workflow.service';
 import { ApproveApplicationDto } from './dto/approve-application.dto';
+import { ExportAdminApplicationsQueryDto } from './dto/export-admin-applications-query.dto';
 import {
   ADMIN_APPLICATION_STATUSES,
   ListAdminApplicationsQueryDto,
 } from './dto/list-admin-applications-query.dto';
 import { RejectApplicationDto } from './dto/reject-application.dto';
+
+const MAX_EXPORT_ROWS = 10_000;
+const EXPORT_BATCH_SIZE = 500;
 
 function parseAdminStatuses(raw?: string): application_status[] | undefined {
   if (raw === undefined || raw.trim() === '') {
@@ -227,6 +244,102 @@ export class AdminApplicationsService {
     }
 
     return createPaginatedResult(items, total, query.page, query.pageSize);
+  }
+
+  /**
+   * Streams filtered non-draft applications as a UTF-8 BOM CSV (Contract §7.2, Design §10).
+   */
+  async exportCsv(query: ExportAdminApplicationsQueryDto, res: Response): Promise<void> {
+    const where = buildAdminApplicationsWhere(query);
+    const orderBy = buildAdminApplicationsOrderBy(query.sort);
+
+    const total = await this.prisma.applications.count({ where });
+    if (total > MAX_EXPORT_ROWS) {
+      throw new AppException(
+        'EXPORT_TOO_LARGE',
+        `Export matches ${total} rows, exceeding the maximum of ${MAX_EXPORT_ROWS}. Narrow your filters and retry.`,
+      );
+    }
+
+    const filename = `applications-${formatCairoCompactDate()}.csv`;
+    res.status(200);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.vary('Origin');
+
+    res.write(UTF8_BOM);
+    res.write(formatCsvRow(ADMIN_EXPORT_CSV_HEADERS));
+
+    const serviceNameCache = new Map<string, string>();
+    const nowMs = Date.now();
+
+    for (let offset = 0; offset < total; offset += EXPORT_BATCH_SIZE) {
+      const rows = await this.prisma.applications.findMany({
+        where,
+        orderBy: [orderBy, { id: 'asc' }],
+        skip: offset,
+        take: EXPORT_BATCH_SIZE,
+        include: {
+          services: { select: { published_version: true, draft: true } },
+          users_applications_citizen_idTousers: {
+            select: { full_name: true, national_id: true },
+          },
+          deliveries: { select: { status: true } },
+        },
+      });
+
+      if (rows.length === 0) {
+        break;
+      }
+
+      for (const row of rows) {
+        const version = row.service_version ?? row.services.published_version;
+        const cacheKey = `${row.service_id}:${version ?? 'draft'}`;
+        let englishServiceName = serviceNameCache.get(cacheKey);
+        if (englishServiceName === undefined) {
+          const localized = await this.resolveServiceName(
+            row.service_id,
+            version,
+            row.services.draft,
+          );
+          englishServiceName = localized.en;
+          serviceNameCache.set(cacheKey, englishServiceName);
+        }
+
+        const address = row.delivery_address as unknown as DeliveryAddressValue | null;
+        const govCode = address?.governorate;
+        const govEnglish = govCode ? (GOVERNORATE_BY_CODE.get(govCode)?.name.en ?? govCode) : '';
+
+        const isOverdue =
+          (row.status === 'SUBMITTED' || row.status === 'UNDER_REVIEW') &&
+          row.due_at !== null &&
+          row.due_at.getTime() < nowMs;
+
+        const nationalId = row.users_applications_citizen_idTousers.national_id;
+        const maskedId = nationalId ? maskNationalId(nationalId) : '';
+
+        res.write(
+          formatCsvRow([
+            row.application_number,
+            englishServiceName,
+            row.users_applications_citizen_idTousers.full_name,
+            maskedId,
+            govEnglish,
+            formatApplicationStatusLabel(row.status),
+            formatCairoDateTime(row.submitted_at),
+            formatCairoDateTime(row.due_at),
+            isOverdue ? 'Yes' : 'No',
+            formatMoneyEgp(row.payment_amount),
+            formatPaymentStatusLabel(row.payment_status),
+            formatDeliveryStatusLabel(row.deliveries?.status ?? null),
+          ]),
+        );
+      }
+    }
+
+    res.end();
   }
 
   async getById(id: string): Promise<AdminApplicationResponse> {
