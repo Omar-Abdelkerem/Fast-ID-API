@@ -1,21 +1,21 @@
 # Fast ID System — Backend API (`Fast-ID-api`)
 
-REST API for the Fast ID System built with **NestJS 10**, **PostgreSQL 15+**, and **Prisma 6** (database-first).
+REST API for the Fast ID System built with **NestJS 10**, **TypeScript (`strict: true`)**, **PostgreSQL 15+**, and **Prisma 6** (database-first). Implements all **63 endpoints** and **57 error codes** specified in `docs/Fast_ID_API_Contract.md` (v1.0.3-mvp).
 
 ## Prerequisites
 
 - Node.js `>= 20` LTS
-- Docker & Docker Compose (for PostgreSQL 15+)
+- Docker & Docker Compose (PostgreSQL 15+)
 
 ## Quick Start (Clean Checkout)
 
 ```bash
 # 1. Start PostgreSQL 15
-docker compose up -d
+docker compose up -d --wait
 
 # 2. Configure environment variables
 cp .env.example .env
-# Edit .env and set local values (DATABASE_URL, JWT_SECRET, CORS_ORIGINS, FRONTEND_BASE_URL, etc.)
+# Edit .env with your local values (never commit .env or real secrets)
 
 # 3. Install dependencies
 npm ci
@@ -27,6 +27,43 @@ npm run migrate
 npm run start:dev
 ```
 
+On first boot, `SeedService` ensures the `settings` singleton exists and creates the initial `ADMIN` account from `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` (with `mustChangePassword: true`) if no `ADMIN` exists in the database.
+
+## Architecture & Security Controls
+
+- **HTTP pipeline (`src/app.setup.ts`, `src/app.module.ts`):**
+  1. `helmet` security headers (`X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, HSTS outside local dev)
+  2. `cookie-parser`, server-generated `X-Request-Id` (client header ignored)
+  3. Strict exact-match CORS allow-list (`CORS_ORIGINS`, never `*`, `credentials: true`, exposed `Retry-After`, `X-Request-Id`, `Content-Disposition`)
+  4. Write `Content-Type` enforcement (D-24: `415 UNSUPPORTED_MEDIA_TYPE` on disallowed media types) & 100 KB JSON body limit (`413 PAYLOAD_TOO_LARGE`)
+  5. Guard order: `OriginGuard` (all state-changing writes) -> `AppThrottlerGuard` (IP rate limits) -> `AuthGuard` (HS256 `fid_session` httpOnly cookie + live `is_active` & `token_version` check) -> `UserRateLimitGuard` -> `PasswordChangeGuard` -> `RolesGuard`
+  6. Strict whitelist `ValidationPipe` (`400 UNKNOWN_FIELD` / `400 VALIDATION_ERROR` with `details`)
+  7. Uniform `{ success, data, meta? }` / `{ success: false, error }` envelope (`ResponseEnvelopeInterceptor` & `AllExceptionsFilter`) except binary attachment downloads (§4.10), SSE streams (§6.6), and CSV exports (§7.2)
+  8. `CacheControlInterceptor` (`Cache-Control: no-store` default + `Vary: Origin`, with explicit public cache exceptions in §0.15)
+  9. `nestjs-pino` structured request logging with PII/cookie/token/password redaction
+  10. Graceful shutdown hooks (`app.enableShutdownHooks()`): drains HTTP, closes SSE streams, stops scheduled jobs, disconnects Prisma.
+- **Passwords & Tokens:** `argon2id` password hashing; dummy hash verification on login for timing protection; SHA-256 hashed single-use password reset tokens; 32-byte random QR tokens; constant-time 6-digit delivery code comparison with persisted 5-try lock.
+- **Attachments & Exports:** Magic-byte sniffing (JPEG/PNG/PDF), private storage outside web root, authenticated streaming with `Content-Security-Policy: default-src 'none'; sandbox` and RFC 5987 UTF-8 `Content-Disposition`, UTF-8 BOM CSV exports with formula-injection neutralization (`=`, `+`, `-`, `@`, `\t`, `\r`).
+- **Concurrency & Workflow:** Single status-writer (`ApplicationWorkflowService.transition`), global lock order (`application -> delivery -> credential -> users -> advisory locks`), `FOR NO KEY UPDATE` on `users` to prevent FK deadlocks, advisory locks (`assign:<governorate>`, `staff:admin_active`), lease-based transactional email outbox worker (`FOR UPDATE SKIP LOCKED` + `locked_until`), and daily 03:00 `Africa/Cairo` cleanup job.
+
+## Rate Limits (Contract §0.13)
+
+All in-memory rate-limiters are bounded (50,000-entry cap with periodic TTL pruning) and return `429 RATE_LIMITED` with a `Retry-After` header in seconds:
+
+| Endpoint | Limit |
+|---|---|
+| `POST /api/v1/auth/login` | 10 / 15 min per IP + 5 failed attempts / 15 min per (IP + identifier) |
+| `POST /api/v1/auth/register` | 5 / hour per IP |
+| `POST /api/v1/auth/forgot-password` | 3 / hour per IP + 3 / hour per email |
+| `POST /api/v1/auth/reset-password` | 10 / hour per IP |
+| `POST /api/v1/auth/change-password` | 5 / 15 min per user |
+| `GET /api/v1/verify/:qrToken` | 30 / min per IP |
+| `POST /api/v1/applications/:id/attachments` | 30 / 10 min per user |
+| `POST /api/v1/agent/deliveries/:id/deliver` | 20 / min per user (+ 5-try per-delivery lock) |
+| `GET /api/v1/admin/applications/export` | 5 / min per user |
+| All other endpoints (default) | 120 / min per IP |
+| `GET /api/v1/notifications/stream` | Max 3 concurrent SSE streams per user |
+
 ## Database Migration Rules
 
 - `prisma/migrations/0001_init/migration.sql` is `db/schema.sql` copied verbatim.
@@ -35,13 +72,14 @@ npm run start:dev
 - Note for Prisma 6 `db pull`: PostgreSQL's deferred composite FK `services_published_version_fk` (`(id, published_version) -> service_versions(service_id, version)`) is introspected as a one-to-one relation without `@@unique([id, published_version])`. Keep the back-relation on `service_versions` (`services_services_id_published_versionToservice_versions`) as `services[]` in `prisma/schema.prisma` before running `prisma generate`.
 - **Never** run `prisma migrate dev` and **never** edit an already-applied migration.
 
-## Verification Commands
+## Verification & Quality Gates
 
 ```bash
-npm run lint
-npm run build
-npm test
-npm run test:e2e
+npm run format      # Prettier check/write
+npm run lint        # ESLint strict check
+npm run build       # TypeScript strict NestJS build
+npm test            # Unit test suites (includes 57-code error registry vs contract check)
+npm run test:e2e    # Full e2e suites against real PostgreSQL 15 (includes 63-endpoint conformance & hardening suites)
 ```
 
 ## Specifications
