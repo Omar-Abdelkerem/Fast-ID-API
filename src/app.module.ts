@@ -20,6 +20,7 @@ import { RequestWithId } from './common/middleware/request-id.middleware';
 import { BoundedThrottlerStorage } from './common/rate-limit/bounded-throttler-storage';
 import { validateEnv } from './config/env.schema';
 import { DatabaseModule } from './database/database.module';
+import { AdminUsersModule } from './modules/admin-users/admin-users.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { ApplicationsModule } from './modules/applications/applications.module';
 import { WorkflowModule } from './modules/applications/workflow.module';
@@ -35,6 +36,7 @@ import { ReferenceModule } from './modules/reference/reference.module';
 import { SeedModule } from './modules/seed/seed.module';
 import { ServicesModule } from './modules/services/services.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { StatsModule } from './modules/stats/stats.module';
 import { StorageModule } from './modules/storage/storage.module';
 
 @Module({
@@ -127,6 +129,8 @@ import { StorageModule } from './modules/storage/storage.module';
     ApplicationsModule,
     AttachmentsModule,
     NotificationsModule,
+    AdminUsersModule,
+    StatsModule,
   ],
   providers: [
     // Guard execution order matches Design §5:
