@@ -162,7 +162,8 @@ export function buildAdminApplicationsWhere(
   if (query.q) {
     const q = query.q.trim();
     const orSearch: Prisma.applicationsWhereInput[] = [
-      { application_number: { startsWith: q, mode: 'insensitive' } },
+      // application_number is always uppercase (APP-YYYY-NNNNNN); uppercase prefix enables applications_number_prefix_idx (text_pattern_ops).
+      { application_number: { startsWith: q.toUpperCase() } },
       { users_applications_citizen_idTousers: { full_name: { contains: q, mode: 'insensitive' } } },
     ];
     if (/^[0-9]{14}$/.test(q)) {
