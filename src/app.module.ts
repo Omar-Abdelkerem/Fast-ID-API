@@ -30,6 +30,7 @@ import { DeliveriesModule } from './modules/deliveries/deliveries.module';
 import { EmailModule } from './modules/email/email.module';
 import { HealthModule } from './modules/health/health.module';
 import { NotificationsRegistryModule } from './modules/notifications/notifications-registry.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ReferenceModule } from './modules/reference/reference.module';
 import { SeedModule } from './modules/seed/seed.module';
 import { ServicesModule } from './modules/services/services.module';
@@ -125,6 +126,7 @@ import { StorageModule } from './modules/storage/storage.module';
     DeliveriesModule,
     ApplicationsModule,
     AttachmentsModule,
+    NotificationsModule,
   ],
   providers: [
     // Guard execution order matches Design §5:
