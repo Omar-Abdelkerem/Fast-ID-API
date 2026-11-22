@@ -79,7 +79,89 @@ npm run format      # Prettier check/write
 npm run lint        # ESLint strict check
 npm run build       # TypeScript strict NestJS build
 npm test            # Unit test suites (includes 57-code error registry vs contract check)
-npm run test:e2e    # Full e2e suites against real PostgreSQL 15 (includes 63-endpoint conformance & hardening suites)
+npm run test:e2e    # Full e2e suites against real PostgreSQL 15 (includes 63-endpoint conformance, hardening & demo scenario)
+```
+
+## Demo Seed (Local Development & Graduation Demo Only)
+
+To populate a non-production database with 3 published bilingual services (`national-id`, `driving-license`, `birth-certificate`) and 4 ready-to-use demo accounts, set `DEMO_SEED_PASSWORD` (at least 8 characters, containing a letter and a digit) and run:
+
+```bash
+# Bash / macOS / Linux
+DEMO_SEED_PASSWORD="YourDemoPassword1!" npm run seed:demo
+
+# PowerShell (Windows)
+$env:DEMO_SEED_PASSWORD = "YourDemoPassword1!"; npm run seed:demo
+```
+
+The script is idempotent and refuses to run when `NODE_ENV=production`. Demo accounts created:
+- **Admin:** `demo.admin@example.com`
+- **Cairo Agent:** `demo.agent.cairo@example.com` (`CAIRO`)
+- **Alexandria Agent:** `demo.agent.alex@example.com` (`ALEXANDRIA`)
+- **Citizen:** `demo.citizen@example.com` (National ID `29805150112319`)
+
+## Production Deployment Guide
+
+1. **Environment variables:** Configure all required variables in your platform secret store (see `.env.example`):
+   - `NODE_ENV=production`, `PORT`, `DATABASE_URL` (TLS-enabled PostgreSQL 15+)
+   - `JWT_SECRET` (at least 32 random bytes from a CSPRNG)
+   - `CORS_ORIGINS` (exact HTTPS origins, comma-separated, never `*`) and `FRONTEND_BASE_URL`
+   - `COOKIE_SAMESITE`: use `lax` when frontend and API share a registrable domain; use `none` (`Secure` is enabled automatically outside `development`/`test`) when deployed on separate registrable domains
+   - `TRUST_PROXY`: set to the exact proxy hop count (e.g. `1`) behind Nginx / Cloudflare / load balancer so `req.ip` and rate limiting reflect real client IPs
+   - `EMAIL_DRIVER=resend`, `EMAIL_PROVIDER_API_KEY`, `EMAIL_FROM`
+   - `STORAGE_DRIVER` and persistent private storage path (outside any web root) or object-storage bucket
+   - `PAYMENT_MODE=disabled` until a real payment gateway replaces the MVP mock endpoint
+   - Provide `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` only for first boot, change the password immediately after logging in, and remove `SEED_ADMIN_*` from the environment afterward.
+2. **Reverse proxy & SSE:** Disable response buffering for `/api/v1/notifications/stream` (the API also sends `X-Accel-Buffering: no`) and keep read timeouts above the 25-second SSE ping interval.
+3. **Migrations & startup:**
+   ```bash
+   npm ci --omit=dev
+   npx prisma migrate deploy
+   npm run start:prod
+   ```
+4. **Health & graceful shutdown:** Point liveness/readiness probes at `GET /api/v1/health` (`200 { status: "ok" }` or `503 SERVICE_UNAVAILABLE`). Send `SIGTERM` on rollout; `app.enableShutdownHooks()` drains HTTP requests, closes active SSE streams, stops scheduled jobs, and disconnects Prisma cleanly.
+5. **Scaling note:** MVP runs as a single API instance (bounded in-memory rate limiters and SSE registry). Before scaling horizontally, back rate limiters and SSE pub/sub with Redis behind their existing interfaces.
+
+## Backup & Restore Runbook
+
+Verified end-to-end against PostgreSQL 15 (`pg_dump` -> `pg_restore` into a clean database with all tables, data, and append-only triggers intact).
+
+### 1. Daily Logical Database Backup
+
+```bash
+pg_dump --format=custom --no-owner "$DATABASE_URL" > "fastid-$(date +%Y%m%d-%H%M).dump"
+```
+
+### 2. Sync Attachment Storage
+
+```bash
+# Local disk driver (sync outside web root to encrypted off-host backup target)
+rsync -az --delete "$STORAGE_LOCAL_PATH/" /backups/fastid-storage/
+
+# S3-compatible object storage driver
+aws s3 sync "s3://$STORAGE_BUCKET" "s3://$BACKUP_STORAGE_BUCKET" --endpoint-url "$STORAGE_ENDPOINT"
+```
+
+### 3. Restore Database & Verify Integrity
+
+```bash
+# Restore into target database (replace $TARGET_DATABASE_URL carefully)
+pg_restore --clean --if-exists --no-owner --dbname="$TARGET_DATABASE_URL" backup.dump
+
+# Post-restore verification: confirm core row counts and immutability triggers
+psql "$TARGET_DATABASE_URL" -c "
+  SELECT
+    (SELECT count(*) FROM services) AS services,
+    (SELECT count(*) FROM service_versions) AS service_versions,
+    (SELECT count(*) FROM users) AS users,
+    (SELECT count(*) FROM applications) AS applications,
+    (SELECT count(*) FROM settings) AS settings;
+"
+psql "$TARGET_DATABASE_URL" -c "
+  SELECT tgname FROM pg_trigger
+  WHERE tgname IN ('audit_append_only', 'ash_append_only', 'sv_immutable')
+  ORDER BY tgname;
+"
 ```
 
 ## Specifications
