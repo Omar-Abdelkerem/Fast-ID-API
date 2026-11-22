@@ -42,7 +42,7 @@ export async function lockCredential(tx: PrismaTx, credentialId: string): Promis
 
 export async function lockUser(tx: PrismaTx, userId: string): Promise<boolean> {
   const rows = await tx.$queryRaw<Array<{ id: string }>>`
-    SELECT id FROM users WHERE id = ${userId}::uuid FOR UPDATE
+    SELECT id FROM users WHERE id = ${userId}::uuid FOR NO KEY UPDATE
   `;
   return rows.length > 0;
 }
