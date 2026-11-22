@@ -109,7 +109,7 @@ The script is idempotent and refuses to run when `NODE_ENV=production`. Demo acc
    - `COOKIE_SAMESITE`: use `lax` when frontend and API share a registrable domain; use `none` (`Secure` is enabled automatically outside `development`/`test`) when deployed on separate registrable domains
    - `TRUST_PROXY`: set to the exact proxy hop count (e.g. `1`) behind Nginx / Cloudflare / load balancer so `req.ip` and rate limiting reflect real client IPs
    - `EMAIL_DRIVER=resend`, `EMAIL_PROVIDER_API_KEY`, `EMAIL_FROM`
-   - `STORAGE_DRIVER` and persistent private storage path (outside any web root) or object-storage bucket
+   - `STORAGE_DRIVER` (`local` | `cloudinary` | `s3`): for Cloudinary set `STORAGE_DRIVER=cloudinary` with `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` (or `CLOUDINARY_URL`) and optional `CLOUDINARY_FOLDER` (default `fast-id`); attachments are stored privately as `resource_type: 'raw'` + `type: 'authenticated'` and streamed only through the authenticated `GET /api/v1/applications/:id/attachments/:attachmentId/file` endpoint
    - `PAYMENT_MODE=disabled` until a real payment gateway replaces the MVP mock endpoint
    - Provide `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` only for first boot, change the password immediately after logging in, and remove `SEED_ADMIN_*` from the environment afterward.
 2. **Reverse proxy & SSE:** Disable response buffering for `/api/v1/notifications/stream` (the API also sends `X-Accel-Buffering: no`) and keep read timeouts above the 25-second SSE ping interval.

@@ -129,13 +129,21 @@ export const envSchema = z
     ),
     EMAIL_PROVIDER_API_KEY: optionalNonEmptyString,
     EMAIL_FROM: optionalNonEmptyString,
-    STORAGE_DRIVER: z.enum(['local', 's3']),
+    STORAGE_DRIVER: z.enum(['local', 's3', 'cloudinary']),
     STORAGE_LOCAL_PATH: optionalNonEmptyString,
     STORAGE_BUCKET: optionalNonEmptyString,
     STORAGE_ENDPOINT: optionalNonEmptyString,
     STORAGE_ACCESS_KEY: optionalNonEmptyString,
     STORAGE_SECRET_KEY: optionalNonEmptyString,
     STORAGE_REGION: optionalNonEmptyString,
+    CLOUDINARY_CLOUD_NAME: optionalNonEmptyString,
+    CLOUDINARY_API_KEY: optionalNonEmptyString,
+    CLOUDINARY_API_SECRET: optionalNonEmptyString,
+    CLOUDINARY_URL: optionalNonEmptyString,
+    CLOUDINARY_FOLDER: z.preprocess(
+      (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+      z.string().trim().min(1).default('fast-id'),
+    ),
     PAYMENT_MODE: z.enum(['mock', 'disabled']),
     // Optional in Zod; enforced at boot only when zero ADMIN rows exist in users.
     SEED_ADMIN_EMAIL: optionalEmail,
@@ -188,6 +196,23 @@ export const envSchema = z
             message: `${field} is required when STORAGE_DRIVER=s3`,
           });
         }
+      }
+    }
+
+    if (env.STORAGE_DRIVER === 'cloudinary') {
+      const hasUrl = Boolean(
+        env.CLOUDINARY_URL && /^cloudinary:\/\/[^:@]+:[^@]+@[^/\s]+$/.test(env.CLOUDINARY_URL),
+      );
+      const hasIndividual = Boolean(
+        env.CLOUDINARY_CLOUD_NAME && env.CLOUDINARY_API_KEY && env.CLOUDINARY_API_SECRET,
+      );
+      if (!hasUrl && !hasIndividual) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['CLOUDINARY_CLOUD_NAME'],
+          message:
+            'Either CLOUDINARY_URL or all of CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET are required when STORAGE_DRIVER=cloudinary',
+        });
       }
     }
   });

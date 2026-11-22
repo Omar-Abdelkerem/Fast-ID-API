@@ -82,6 +82,33 @@ describe('envSchema / validateEnv', () => {
     expect(parsed.STORAGE_BUCKET).toBe('fastid-bucket');
   });
 
+  it('requires Cloudinary credentials when STORAGE_DRIVER=cloudinary', () => {
+    expect(() =>
+      validateEnv(makeValidEnv({ STORAGE_DRIVER: 'cloudinary', STORAGE_LOCAL_PATH: '' })),
+    ).toThrow(/CLOUDINARY_CLOUD_NAME/);
+
+    const withVars = validateEnv(
+      makeValidEnv({
+        STORAGE_DRIVER: 'cloudinary',
+        STORAGE_LOCAL_PATH: '',
+        CLOUDINARY_CLOUD_NAME: 'demo-cloud',
+        CLOUDINARY_API_KEY: '123456',
+        CLOUDINARY_API_SECRET: 'secret-value',
+      }),
+    );
+    expect(withVars.STORAGE_DRIVER).toBe('cloudinary');
+    expect(withVars.CLOUDINARY_FOLDER).toBe('fast-id');
+
+    const withUrl = validateEnv(
+      makeValidEnv({
+        STORAGE_DRIVER: 'cloudinary',
+        STORAGE_LOCAL_PATH: '',
+        CLOUDINARY_URL: 'cloudinary://123456:secret-value@demo-cloud',
+      }),
+    );
+    expect(withUrl.STORAGE_DRIVER).toBe('cloudinary');
+  });
+
   it('requires EMAIL_PROVIDER_API_KEY and EMAIL_FROM when EMAIL_DRIVER=resend', () => {
     expect(() => validateEnv(makeValidEnv({ EMAIL_DRIVER: 'resend' }))).toThrow(
       /EMAIL_PROVIDER_API_KEY/,

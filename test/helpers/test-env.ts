@@ -3,6 +3,9 @@ import * as path from 'path';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 process.env.NODE_ENV = 'test';
+// Keep automated e2e tests deterministic and offline against local disk storage.
+process.env.STORAGE_DRIVER = 'local';
+process.env.STORAGE_LOCAL_PATH = process.env.STORAGE_LOCAL_PATH || './storage';
 
 export function getTestAllowedOrigin(): string {
   const raw = process.env.CORS_ORIGINS ?? '';
