@@ -17,6 +17,7 @@
     "migrate": "prisma migrate deploy",
     "db:pull": "prisma db pull && prisma generate",
     "prisma:generate": "prisma generate",
+    "seed:demo": "ts-node -r tsconfig-paths/register src/scripts/seed-demo.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
